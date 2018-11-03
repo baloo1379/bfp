@@ -21,11 +21,10 @@ Cechy:
     * `111` - NOT i silnia (pierwszy argument NOT, drugi silnia)
 
 2. Statusy(Flagi) - 4 bitowe pole zawierające status transmisji.
-    * `0000` - rozpoczynanie połączenia (SYN)
-    * `0001` - wysyłanie (SEQ)
+    * `0000` - wysyłanie (SEQ)
+    * `0001` - rozpoczynanie połączenia (SYN)
     * `0010` - odpowiedź (ACK)
     * `0100` - koniec połączenia (FIN)
-    * `1000` - 
 
 3. Pole długośći danych - 32 bitowe pole zawierające informacje o długości pola dane.
 4. Pole danych, pole w którym znajdują się informacje:
