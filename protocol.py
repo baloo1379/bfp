@@ -99,23 +99,23 @@ class BFP:
 
         # ustawianie operacji
         if self.operation == '+':
-            operation = BitArray(int=0, length=3)
+            operation = BitArray(int=-4, length=3)
         elif self.operation == '-':
-            operation = BitArray(int=1, length=3)
+            operation = BitArray(int=-3, length=3)
         elif self.operation == '*':
-            operation = BitArray(int=2, length=3)
+            operation = BitArray(int=-2, length=3)
         elif self.operation == '/':
-            operation = BitArray(int=3, length=3)
+            operation = BitArray(int=-1, length=3)
         elif self.operation == 'OR':
-            operation = BitArray(int=4, length=3)
+            operation = BitArray(int=0, length=3)
         elif self.operation == 'XOR':
-            operation = BitArray(int=5, length=3)
+            operation = BitArray(int=1, length=3)
         elif self.operation == 'AND':
-            operation = BitArray(int=6, length=3)
+            operation = BitArray(int=2, length=3)
         elif self.operation == 'NOT':
-            operation = BitArray(int=7, length=3)
+            operation = BitArray(int=3, length=3)
         elif self.operation == '!':
-            operation = BitArray(int=7, length=3)
+            operation = BitArray(int=3, length=3)
         else:
             raise Exception(f'Nieprawidłowy format operacji: {operation}')
 
@@ -144,23 +144,23 @@ class BFP:
         self.fin = self.status[1]
         self.length = header[7:-1].int
 
-        if operation == 0:
+        if operation == -4:
             self.operation = '+'
-        elif operation == 1:
+        elif operation == -3:
             self.operation = '-'
-        elif operation == 2:
+        elif operation == -2:
             self.operation = '*'
-        elif operation == 3:
+        elif operation == -1:
             self.operation = '/'
-        elif operation == 4:
+        elif operation == 0:
             self.operation = 'OR'
-        elif operation == 5:
+        elif operation == 1:
             self.operation = 'XOR'
-        elif operation == 6:
+        elif operation == 2:
             self.operation = 'AND'
-        elif operation == 7:
+        elif operation == 3:
             self.operation = 'NOT'
-        elif operation == 7:
+        elif operation == 3:
             self.operation = '!'
 
         self.unpack_data()
