@@ -72,6 +72,7 @@ class BFP:
         self.syn = status[3]
         self.ack = status[2]
         self.fin = status[1]
+        self.status = status
         self.seq_id = seq
         self.ack_id = ack
         self.session_id = session_id
@@ -82,10 +83,10 @@ class BFP:
         self.pack_packet()
 
     def pack_data(self):
-        self.data = pack("!HHIII", self.seq_id, self.ack_id, self.session_id, self.first, self.second)
+        self.data = pack("!HHIii", self.seq_id, self.ack_id, self.session_id, self.first, self.second)
 
     def unpack_data(self):
-        data = unpack("!HHIII", self.data)
+        data = unpack("!HHIii", self.data)
         self.seq_id = data[0]
         self.ack_id = data[1]
         self.session_id = data[2]
@@ -118,7 +119,8 @@ class BFP:
         else:
             raise Exception(f'Nieprawidłowy format operacji: {operation}')
 
-        status = tuple_to_int((False, self.fin, self.ack, self.syn))
+        self.status = (False, self.fin, self.ack, self.syn)
+        status = tuple_to_int(self.status)
         status = Bits(uint=status, length=4)
 
         header = operation + status + BitArray(uint=self.length, length=32) + self.offset

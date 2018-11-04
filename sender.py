@@ -1,6 +1,5 @@
 import socket
 from protocol import BFP
-import threading
 import time
 import sys
 import random
@@ -10,14 +9,20 @@ SERVER = '25.21.164.65'
 HOST = '25.21.131.8'
 DEBUG = True
 
+WAIT = 0
+SYN_SENT = 1
+ESTABLISHED = 2
+FIN_WAIT_1 = 3
+FIN_WAIT_2 = 4
+TIME_WAIT = 5
+
 
 class Client:
     server_ip = ''
     host_ip = ''
     packet = BFP()
     old_packet = BFP()
-    estabilished = False
-    stage = 0
+    state = WAIT
 
     def __init__(self, server_ip='25.21.131.8', host_ip='25.21.131.8'):
         self.host_ip = host_ip
@@ -25,13 +30,24 @@ class Client:
         try:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_RAW, 200)
             self.s.bind((self.host_ip, 0))
+            self.s.settimeout(10.0)
 
         except OSError as e:
             print(f'Coś poszło nie tak: {e.strerror}, kod: [{e.errno}], adres: {self.host_ip}')
             sys.exit()
 
+    def is_response_ok(self):
+        if self.packet.ack and self.old_packet.seq_id + 1 == self.packet.ack_id and \
+                self.old_packet.session_id == self.packet.session_id:
+            return True
+        else:
+            return False
+
     def send(self):
-        self.packet.ack_id = self.packet.seq_id + 1
+        if self.packet.ack:
+            self.packet.ack_id = self.packet.seq_id + 1
+        else:
+            self.packet.ack_id = 0
         self.packet.seq_id = random.randrange(1, 1024)
         self.s.sendto(self.packet.pack_packet(), (self.server_ip, 0))
         if DEBUG:
@@ -40,7 +56,13 @@ class Client:
 
     def listen(self):
         while True:
-            raw = self.s.recvfrom(65535)
+            try:
+                raw = self.s.recvfrom(65535)
+            except socket.timeout:
+                self.state = TIME_WAIT
+                if DEBUG:
+                    print("TIMEOUT")
+                    return
             # self.server_ip = raw[1][0]
             if DEBUG:
                 print("Received from", self.server_ip, "at", time.asctime())
@@ -48,143 +70,103 @@ class Client:
             raw_packet = raw[0].hex()
             ihl = int(int(raw_packet[1]) * 32 / 8)
             raw_data = raw[0][ihl:]
+            self.old_packet = copy.copy(self.packet)
             self.packet.parse_data(raw_data)
             self.packet.print()
             return
 
     def receive(self):
         self.listen()
-        if self.old_packet.seq_id + 1 != self.packet.ack_id and self.old_packet.session_id != self.packet.session_id:
-            print("Wrong response. Leaving.")
-            self.packet = BFP()
-            self.stage = 0
-            self.estabilished = False
+        if self.is_response_ok():
+            # response ok
+            if DEBUG:
+                print("REQUEST OK")
             self.send()
-        if self.packet.fin:
-            self.close(False)
+            print("Wynik:", self.packet.first)
+            self.packet.ack = False
 
     def connect(self):
-        self.packet = BFP("-", (False, False, False, True), random.randrange(0, 1024), random.randrange(0, 1024), 1997, 1234, 4321)
-        self.old_packet = copy.copy(self.packet)
-
+        self.packet = BFP("-", (False, False, False, True), random.randrange(0, 1024), random.randrange(0, 1024),
+                          random.randrange(1, 65535), 1234, 4321)
+        # synchronizing
         self.send()
+        self.state = SYN_SENT
+        if DEBUG:
+            print("SYNCHRONIZING")
+
         self.listen()
-        if self.packet.syn & self.packet.ack & self.stage == 0:
-            if self.old_packet.seq_id+1 != self.packet.ack_id and self.old_packet.session_id != self.packet.session_id:
-                print("Wrong response. Leaving.")
-                self.packet = BFP()
-                self.stage = 0
-                return
-            print("Received second step")
-            self.send()
-            self.listen()
-            if self.old_packet.seq_id+1 != self.packet.ack_id and self.old_packet.session_id != self.packet.session_id:
-                print("Wrong response. Leaving.")
-                self.packet = BFP()
-                self.stage = 0
-                return
-            print("ESTABILISHED")
-            self.estabilished = True
-            self.send()
-            self.packet.syn = False
+        if self.packet.status == (False, False, True, True) and self.state == SYN_SENT:
+            if self.old_packet.seq_id+1 == self.packet.ack_id and self.old_packet.session_id == self.packet.session_id:
+                # estabilished
+                if DEBUG:
+                    print("ESTABILISHED")
+                self.packet.syn = False
+                self.packet.ack = True
+                self.send()
+                self.state = ESTABLISHED
+                self.packet.syn = False
+                self.packet.ack = False
+
         else:
-            print("Unrecognized packet")
+            print("BAD RESPONSE")
             self.packet = BFP()
-            self.stage = 0
+            self.state = WAIT
         print("END CONNECT")
 
-    def close(self, ack=True):
-        if ack:
-            self.packet.fin = True
-            self.send()
-        self.packet = BFP()
-        self.stage = 0
-        self.estabilished = False
-        print("CONNECTION CLOSED")
-
-
-def sender(s_ip, h_ip):
-
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_RAW, 200)
-        s.bind((h_ip, 0))
-
-    except OSError as e:
-        print(f'Coś poszło nie tak: {e.strerror}, kod: [{e.errno}], adres: {h_ip}')
-        sys.exit()
-
-    packet = BFP("-", (False, True, True), 100, 0, 1997, 1234, 4321)
-    s.sendto(packet.pack_packet(), (s_ip, 0))
-    print(time.asctime(), "send from", h_ip, "to", s_ip)
-
-
-def listener():
-    print(f'listening on {HOST}')
-    packet = BFP()
-    with socket.socket(socket.AF_INET, socket.SOCK_RAW, 200) as s:
-        s.bind((HOST, 0))
-        while True:
-            row = s.recvfrom(65535)
-
-            client = row[1][0]
-            pt = row[0].hex()
-            ihl = int(int(pt[1]) * 32 / 8)
-            data = row[0][ihl:]
-            packet.parse_data(data)
-            print("from:", client, "data:")
-            packet.print()
-            if packet.syn:
-                new_packet = packet
-                new_packet.ack_id = packet.seq_id + 1
-                new_packet.seq_id = 500
-                new_packet.ack = True
-                s.sendto(new_packet.pack_packet(), (SERVER, 0))
-
-
-class Sender (threading.Thread):
-    def __init__(self, threadID, name, serv, host):
-        super(Sender, self).__init__()
-        self.threadID = threadID
-        self.name = name
-        self.serv = serv
-        self.host = host
-
-    def run(self):
-        while True:
-            sender(self.serv, self.host)
-            time.sleep(5)
-
-
-class Listener (threading.Thread):
-    def __init__(self, threadID, name):
-        super(Listener, self).__init__()
-        self.threadID = threadID
-        self.name = name
-
-    def run(self):
-        while True:
-            listener()
+    def close(self):
+        self.packet = BFP('+', (False, True, False, False), random.randrange(0, 1024), 0, self.packet.session_id, 0, 0)
+        self.send()
+        self.state = FIN_WAIT_1
+        self.listen()
+        if self.packet.ack and self.old_packet.seq_id+1 == self.packet.ack_id:
+            # ack ok
+            self.state = FIN_WAIT_2
+            self.listen()
+            if self.packet.fin:
+                # fin received
+                self.state = TIME_WAIT
+                self.packet.fin = False
+                self.packet.ack = True
+                self.send()
 
 
 def main():
     if len(sys.argv) == 3:
-        serv = sys.argv[1]
+        server = sys.argv[1]
         host = sys.argv[2]
     else:
-        serv = SERVER
+        server = SERVER
         host = HOST
 
-    c = Client(serv, host)
-    c.connect()
-    while c.estabilished:
-        c.send()
-        time.sleep(1)
-        c.receive()
-        exit = input()
-        if exit == "exit":
-            c.close()
+    # c = Client('127.0.0.1', '127.0.0.1')
+    c = Client(server, host)
+    while not c.state == ESTABLISHED:
+        c.connect()
+        if c.state == WAIT:
+            user = input("RECONNECT?")
+    while c.state == ESTABLISHED:
+        user = input()
 
-    input("ENTER to Continue")
+        if user == "exit":
+            c.close()
+            print('Goodbye')
+            break
+
+        user = user.split(" ")
+        if len(user) > 3:
+            if DEBUG:
+                print(len(user), user)
+            print("Too many arguments. Only 3 arguments are valid. ex. 3 + 5")
+            continue
+        else:
+            a = int(user[0])
+            b = int(user[2])
+            operation = user[1]
+            c.packet.operation = operation
+            c.packet.first = a
+            c.packet.second = b
+            c.send()
+            c.receive()
 
 
 if __name__ == "__main__":
