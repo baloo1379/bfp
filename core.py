@@ -1,5 +1,6 @@
 import copy
 import time
+import random
 
 
 def listener(this, socket, debug):
@@ -24,3 +25,15 @@ def listener(this, socket, debug):
             if debug:
                 this.packet.print()
             return True
+
+
+def sender(this, debug):
+    if this.packet.ack:
+        this.packet.ack_id = this.packet.seq_id + 1
+    else:
+        this.packet.ack_id = 0
+    this.packet.seq_id = random.randrange(1, 1024)
+    this.s.sendto(this.packet.pack_packet(), (this.ip, 0))
+    if debug:
+        print("SEND TO", this.ip, "AT", time.asctime())
+        this.packet.print()

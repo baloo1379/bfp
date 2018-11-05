@@ -1,9 +1,7 @@
 import socket
 from protocol import BFP
-import time
 import sys
-import random
-from core import listener
+from core import listener, sender
 
 
 DEBUG = False
@@ -17,30 +15,28 @@ CLOSED = 5
 
 
 class Server:
-    server = ''
-    ip = ''
     packet = BFP()
     old_packet = BFP()
     state = LISTEN
     error_count = 0
 
-    def __init__(self, host):
-        self.server = host
+    def __init__(self, server_ip):
+        self.server_ip = server_ip
+        self.ip = ''
         try:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_RAW, 200)
-            self.s.bind((self.server, 0))
+        except OSError as e:
+            print(f'Something went wrong: {e.strerror}, code: [{e.errno}], address: {self.server_ip}')
+            sys.exit()
+        else:
+            self.s.bind((self.server_ip, 0))
             if DEBUG:
                 self.s.settimeout(2.0)
             else:
                 self.s.settimeout(10.0)
-
-        except OSError as e:
-            print(f'Something went wrong: {e.strerror}, code: [{e.errno}], address: {self.server}')
-            sys.exit()
-
-        print("Server ready on", self.server)
-        self.state = LISTEN
-        self.error_count = 0
+            self.state = LISTEN
+            self.error_count = 0
+            print("Server ready on", self.server_ip)
 
     def is_response_ok(self):
         if self.packet.ack and self.old_packet.seq_id + 1 == self.packet.ack_id and \
@@ -50,31 +46,8 @@ class Server:
             return False
 
     def send(self):
-        if self.packet.ack:
-            self.packet.ack_id = self.packet.seq_id + 1
-        else:
-            self.packet.ack_id = 0
-        self.packet.seq_id = random.randrange(1, 1024)
-        self.s.sendto(self.packet.pack_packet(), (self.ip, 0))
-        if DEBUG:
-            print("Send to", self.ip, "at", time.asctime())
-            self.packet.print()
+        return sender(self, DEBUG)
 
-    # def listen(self):
-    #     while True:
-    #         raw = self.s.recvfrom(65535)
-    #         self.ip = raw[1][0]
-    #         if DEBUG:
-    #             print("Received from", self.ip, "at", time.asctime())
-    #
-    #         raw_packet = raw[0].hex()
-    #         ihl = int(int(raw_packet[1]) * 32 / 8)
-    #         raw_data = raw[0][ihl:]
-    #         self.old_packet = copy.copy(self.packet)
-    #         self.packet.parse_data(raw_data)
-    #         if DEBUG:
-    #             self.packet.print()
-    #
     def listen(self):
         return listener(self, socket, DEBUG)
 
@@ -90,6 +63,8 @@ class Server:
                 ok = False
                 while not ok:
                     ok = True
+                    if DEBUG:
+                        print("OPERATION: ", self.packet.first, self.packet.operation, self.packet.second)
                     if self.packet.operation == '+':
                         self.packet.first = self.packet.first + self.packet.second
                         self.packet.ack = True
@@ -123,10 +98,12 @@ class Server:
                         self.packet.second = -self.packet.second
                         self.packet.ack = True
                         self.send()
+                    if DEBUG:
+                        print("=", self.packet.first)
 
                     self.listen()
                     if self.is_response_ok():
-                        print("RESPONSE OK")
+                        print("Response ok")
                     else:
                         ok = False
                         self.error_count = self.error_count + 1

@@ -1,13 +1,12 @@
 import socket
 from protocol import BFP
-import time
 import sys
 import random
-from core import listener
+from core import listener, sender
 
 
 DEBUG = False
-
+# states
 WAIT = 0
 SYN_SENT = 1
 ESTABLISHED = 2
@@ -17,27 +16,25 @@ TIME_WAIT = 5
 
 
 class Client:
-    server_ip = ''
-    host_ip = ''
     packet = BFP()
     old_packet = BFP()
-    state = WAIT
-    timeout = False
 
-    def __init__(self, server_ip='25.21.131.8', host_ip='25.21.131.8'):
-        self.host_ip = host_ip
+    def __init__(self, server_ip, client_ip):
+        self.client_ip = client_ip
         self.server_ip = server_ip
+        self.ip = server_ip
         try:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_RAW, 200)
-            self.s.bind((self.host_ip, 0))
+        except OSError as e:
+            print(f'Something went wrong: {e.strerror}, code: [{e.errno}], address: {self.server_ip}')
+            sys.exit()
+        else:
+            self.s.bind((self.client_ip, 0))
             if DEBUG:
                 self.s.settimeout(2.0)
             else:
                 self.s.settimeout(10.0)
-
-        except OSError as e:
-            print(f'Coś poszło nie tak: {e.strerror}, kod: [{e.errno}], adres: {self.host_ip}')
-            sys.exit()
+            self.state = WAIT
 
     def is_response_ok(self):
         if self.packet.ack and self.old_packet.seq_id + 1 == self.packet.ack_id and \
@@ -47,15 +44,7 @@ class Client:
             return False
 
     def send(self):
-        if self.packet.ack:
-            self.packet.ack_id = self.packet.seq_id + 1
-        else:
-            self.packet.ack_id = 0
-        self.packet.seq_id = random.randrange(1, 1024)
-        self.s.sendto(self.packet.pack_packet(), (self.server_ip, 0))
-        if DEBUG:
-            print("Send to", self.server_ip, "at", time.asctime())
-            self.packet.print()
+        return sender(self, DEBUG)
 
     def listen(self):
         return listener(self, socket, DEBUG)
@@ -68,10 +57,10 @@ class Client:
             if DEBUG:
                 print("REQUEST OK")
             self.send()
-            if self.packet.operation == '!':
-                print("Wynik:", self.packet.second)
+            if self.old_packet.operation == '!':
+                print("Equals:", self.packet.second)
             else:
-                print("Wynik:", self.packet.first)
+                print("Equals:", self.packet.first)
             self.packet.ack = False
             return True
         else:
@@ -87,7 +76,7 @@ class Client:
                               random.randrange(1, 65535), 1234, 4321)
             if DEBUG:
                 print("SYNC_COUNTER =", sync_counter)
-            if sync_counter > 1:
+            if sync_counter > 2:
                 if DEBUG:
                     print("CAN'T CONNECT TO SERVER. QUITING")
                 return False
@@ -146,12 +135,11 @@ def run():
         server = sys.argv[1]
         host = sys.argv[2]
     else:
-        server = input("Podaj adres serwera: ")
-        host = input("Podaj swój adres: ")
+        server = input("Give me server address: ")
+        host = input("Give me your address: ")
 
-    # c = Client('127.0.0.1', '127.0.0.1')
     c = Client(server, host)
-    # c = Client('192.168.0.107', '192.168.0.101')
+
     if not c.connect():
         print("Cant' connect.")
         input("Press ENTER to exit.")
@@ -193,13 +181,6 @@ def run():
                 else:
                     err_counter = 0
                     break
-
-
-def main():
-    client = Client('192.168.0.107', '192.168.0.101')
-    while True:
-        client.ping()
-        time.sleep(5)
 
 
 if __name__ == "__main__":
