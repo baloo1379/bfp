@@ -5,7 +5,8 @@ import random
 from core import listener, sender
 
 
-DEBUG = False
+DEBUG = True
+
 # states
 WAIT = 0
 SYN_SENT = 1
@@ -16,25 +17,24 @@ TIME_WAIT = 5
 
 
 class Client:
-    packet = BFP()
-    old_packet = BFP()
-
     def __init__(self, server_ip, client_ip):
         self.client_ip = client_ip
         self.server_ip = server_ip
         self.ip = server_ip
         try:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_RAW, 200)
+            self.s.bind((self.client_ip, 0))
         except OSError as e:
             print(f'Something went wrong: {e.strerror}, code: [{e.errno}], address: {self.server_ip}')
             sys.exit()
         else:
-            self.s.bind((self.client_ip, 0))
             if DEBUG:
                 self.s.settimeout(2.0)
             else:
                 self.s.settimeout(10.0)
             self.state = WAIT
+            self.packet = BFP()
+            self.old_packet = BFP()
 
     def is_response_ok(self):
         if self.packet.ack and self.old_packet.seq_id + 1 == self.packet.ack_id and \

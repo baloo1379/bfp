@@ -4,7 +4,7 @@ import sys
 from core import listener, sender
 
 
-DEBUG = False
+DEBUG = True
 # states
 LISTEN = 0
 SYN_RCVD = 1
@@ -15,27 +15,24 @@ CLOSED = 5
 
 
 class Server:
-    packet = BFP()
-    old_packet = BFP()
-    state = LISTEN
-    error_count = 0
-
     def __init__(self, server_ip):
         self.server_ip = server_ip
         self.ip = ''
         try:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_RAW, 200)
+            self.s.bind((self.server_ip, 0))
         except OSError as e:
             print(f'Something went wrong: {e.strerror}, code: [{e.errno}], address: {self.server_ip}')
             sys.exit()
         else:
-            self.s.bind((self.server_ip, 0))
             if DEBUG:
                 self.s.settimeout(2.0)
             else:
                 self.s.settimeout(10.0)
             self.state = LISTEN
             self.error_count = 0
+            self.packet = BFP()
+            self.old_packet = BFP()
             print("Server ready on", self.server_ip)
 
     def is_response_ok(self):
@@ -60,57 +57,41 @@ class Server:
         if self.packet.status == (False, False, False, False):
             if self.state == ESTABLISHED:
                 # request from connected client
-                ok = False
-                while not ok:
-                    ok = True
+                while True:
                     if DEBUG:
                         print("OPERATION: ", self.packet.first, self.packet.operation, self.packet.second)
+
                     if self.packet.operation == '+':
                         self.packet.first = self.packet.first + self.packet.second
-                        self.packet.ack = True
-                        self.send()
                     elif self.packet.operation == '-':
                         self.packet.first = self.packet.first - self.packet.second
-                        self.packet.ack = True
-                        self.send()
                     elif self.packet.operation == '*':
                         self.packet.first = self.packet.first * self.packet.second
-                        self.packet.ack = True
-                        self.send()
                     elif self.packet.operation == '/':
                         self.packet.first = int(self.packet.first / self.packet.second)
-                        self.packet.ack = True
-                        self.send()
                     elif self.packet.operation == 'OR':
-                        self.packet.first = self.packet.first + self.packet.second
-                        self.packet.ack = True
-                        self.send()
+                        self.packet.first = self.packet.first or self.packet.second
                     elif self.packet.operation == 'XOR':
-                        self.packet.first = self.packet.first + self.packet.second
-                        self.packet.ack = True
-                        self.send()
+                        self.packet.first = self.packet.first or self.packet.second
                     elif self.packet.operation == 'AND':
-                        self.packet.first = self.packet.first + self.packet.second
-                        self.packet.ack = True
-                        self.send()
+                        self.packet.first = self.packet.first and self.packet.second
                     elif self.packet.operation == 'NOT' or self.packet.operation == '!':
                         self.packet.first = -self.packet.first
                         self.packet.second = -self.packet.second
-                        self.packet.ack = True
-                        self.send()
                     if DEBUG:
-                        print("=", self.packet.first)
+                        print("EQUALS", self.packet.first)
+                    self.packet.ack = True
+                    self.send()
 
-                    self.listen()
+                    if not self.listen():
+                        self.error_count = self.error_count + 1
+                        continue
                     if self.is_response_ok():
                         print("Response ok")
+                        break
                     else:
-                        ok = False
                         self.error_count = self.error_count + 1
-                        if self.error_count > 1:
-                            self.state = LISTEN
-                            self.error_count = 0
-                            ok = True
+                        continue
 
             else:
                 # random request - ignore
