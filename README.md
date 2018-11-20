@@ -1,5 +1,5 @@
-# bfp
-Baloo Florek Protocol
+# tlp
+Transport Layer Protocol
 
 Cechy:
 * połączeniowy,
